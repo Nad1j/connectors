@@ -28,6 +28,8 @@ npm run dev                                 # UI only, in a browser, with mocked
 
 Rust tests: `cargo test --manifest-path src-tauri/Cargo.toml`
 
+No webkit2gtk-4.1 on your Linux host (e.g. Enterprise Linux 9)? `scripts/dev-container.sh` runs `cargo clippy` and `cargo test` in an Ubuntu 24.04 container with rootless podman or docker. CI (`.github/workflows/ci.yml`) runs the same checks on Ubuntu and Windows.
+
 ## Layout
 
 ```

@@ -158,3 +158,47 @@ where
     on_progress(1.0);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::platform::{FormatTarget, Platform};
+
+    /// End-to-end: render a landscape test clip, adapt it to a vertical Short
+    /// with a blurred fill and check the output. Skips when FFmpeg is absent
+    /// (CI installs it, so it always runs there).
+    #[tokio::test]
+    async fn landscape_clip_becomes_vertical_blur_pad() {
+        if !available().await {
+            eprintln!("skipping: ffmpeg not found");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("connectors-test-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("in.mp4").to_string_lossy().to_string();
+        let out = dir.join("out.mp4").to_string_lossy().to_string();
+
+        let status = Command::new(binary("ffmpeg"))
+            .args(["-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30:duration=2"])
+            .args(["-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-shortest"])
+            .args(["-pix_fmt", "yuv420p", &src])
+            .status()
+            .await
+            .unwrap();
+        assert!(status.success(), "could not render the test clip");
+
+        let info = probe(&src).await.unwrap();
+        assert_eq!((info.width, info.height), (1920, 1080));
+        let plan = plan_for(&info, &out, FormatTarget::for_platform(Platform::Youtube, true), FitStrategy::Auto);
+        assert_eq!(plan.strategy, plan::ResolvedStrategy::BlurPad);
+
+        let mut last = 0.0;
+        run(&plan, info.duration_s, |f| last = f).await.unwrap();
+        assert_eq!(last, 1.0);
+
+        let result = probe(&out).await.unwrap();
+        assert_eq!((result.width, result.height), (1080, 1920));
+        assert!(result.has_audio);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
