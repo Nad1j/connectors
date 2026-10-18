@@ -4,9 +4,12 @@ name: Release
 #   git tag v0.1.0-rc1 && git push --tags   -> pre-release (tag contains "-")
 #   git tag v0.1.0     && git push --tags   -> normal release, becomes "latest"
 # Or run it by hand from the Actions tab (workflow_dispatch).
+# Dry run (installers as workflow artifacts, no release):
+#   git push origin HEAD:release-dry-run
 on:
   push:
     tags: ["v*"]
+    branches: [release-dry-run]
   workflow_dispatch:
     inputs:
       tag:
@@ -29,6 +32,7 @@ permissions:
   contents: write
 
 env:
+  DRY_RUN: ${{ github.event.inputs.dry_run == 'true' || (github.event_name == 'push' && github.ref_type == 'branch') }}
   # Optional platforms for tag pushes. Windows is always built.
   BUILD_MACOS: "false"
   BUILD_LINUX: "false"
@@ -44,6 +48,7 @@ jobs:
       prerelease: ${{ steps.tag.outputs.prerelease }}
       release_id: ${{ steps.release.outputs.id }}
       matrix: ${{ steps.matrix.outputs.matrix }}
+      dry_run: ${{ steps.tag.outputs.dry_run }}
     steps:
       - uses: actions/checkout@v7
 
@@ -51,11 +56,11 @@ jobs:
         id: tag
         env:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
-          DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
           if [ "$DRY_RUN" = "true" ]; then TAG="v$(jq -r .version package.json)-dryrun"; fi
           if [[ "$TAG" != v* ]]; then echo "::error::Enter a tag like v0.1.0-rc2"; exit 1; fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$DRY_RUN" >> "$GITHUB_OUTPUT"
           if [[ "$TAG" == *-* ]]; then echo "prerelease=true"; else echo "prerelease=false"; fi >> "$GITHUB_OUTPUT"
 
       - name: Check tag matches app version
@@ -83,7 +88,7 @@ jobs:
       # the publish job flips it once every build has uploaded.
       - name: Create draft release
         id: release
-        if: github.event.inputs.dry_run != 'true'
+        if: env.DRY_RUN != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
@@ -153,11 +158,11 @@ jobs:
         with:
           releaseId: ${{ needs.prepare.outputs.release_id }}
           args: ${{ matrix.args }}
-          uploadWorkflowArtifacts: ${{ github.event.inputs.dry_run == 'true' }}
+          uploadWorkflowArtifacts: ${{ needs.prepare.outputs.dry_run == 'true' }}
 
   publish:
     needs: [prepare, build]
-    if: github.event.inputs.dry_run != 'true'
+    if: needs.prepare.outputs.dry_run != 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Publish release
