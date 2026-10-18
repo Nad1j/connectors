@@ -23,7 +23,7 @@ pub fn run() {
             commands::settings_save_secret,
             commands::media_probe,
             commands::media_plan,
-            commands::media_ffmpeg_available,
+            commands::media_ffmpeg_info,
             commands::publish_submit,
             commands::publish_cancel,
             commands::ai_generate,

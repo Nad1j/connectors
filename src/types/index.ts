@@ -75,3 +75,16 @@ export interface ScheduledPost {
   /** ISO date-time */
   at: string;
 }
+
+export type ExportQuality = "low" | "medium" | "high";
+
+/** Result of the desktop FFmpeg check (`media_ffmpeg_info`). */
+export interface FfmpegInfo {
+  source: "env" | "bundled" | "path";
+  path: string;
+  version: string | null;
+  ffprobeFound: boolean;
+  missingEncoders: string[];
+  ready: boolean;
+  problem: string | null;
+}

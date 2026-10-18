@@ -1,6 +1,6 @@
 import { inTauri, invoke, listen } from "@/lib/tauri";
 import { useAppStore } from "@/store/useAppStore";
-import type { FitStrategy, PlatformId, ProgressEvent, PublishJob, Stage } from "@/types";
+import type { ExportQuality, FitStrategy, PlatformId, ProgressEvent, PublishJob, Stage } from "@/types";
 
 export interface PublishInput {
   videoPath?: string;
@@ -11,6 +11,7 @@ export interface PublishInput {
   caption: string;
   hashtags: string[];
   scheduleAt?: string;
+  quality: ExportQuality;
 }
 
 let wired = false;
@@ -35,6 +36,7 @@ export async function submit(input: PublishInput): Promise<string> {
     caption: input.caption,
     hashtags: input.hashtags,
     scheduleAt: input.scheduleAt ?? null,
+    quality: input.quality,
   };
 
   const jobId = inTauri ? await invoke<string>("publish_submit", { request }) : crypto.randomUUID();

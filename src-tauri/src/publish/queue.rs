@@ -1,6 +1,6 @@
 use super::{uploader, PlatformTarget, ProgressEvent, PublishRequest, Stage, PROGRESS_EVENT};
 use crate::{
-    media::ffmpeg,
+    media::{ffmpeg, plan::ExportQuality},
     platform::{FormatTarget, Platform},
 };
 use std::collections::HashMap;
@@ -111,7 +111,7 @@ async fn run_target(
             return r.emit(Stage::Cancelled, 0.0, "Cancelled", None);
         }
         r.emit(Stage::Processing, 0.0, format!("Adapting to {}×{}", format.width, format.height), None);
-        match process(&r, &req.video_path, format, target).await {
+        match process(&r, &req.video_path, format, target, req.quality).await {
             Ok(p) => p,
             Err(e) => return r.emit(Stage::Failed, 0.0, e, None),
         }
@@ -141,32 +141,44 @@ async fn run_target(
     }
 }
 
-/// Real FFmpeg pass when the file and binary exist; otherwise a short
-/// simulated pass so the pipeline is demoable without media on disk.
-async fn process(r: &Reporter, input: &str, format: FormatTarget, target: PlatformTarget) -> Result<String, String> {
-    if Path::new(input).exists() && ffmpeg::available().await {
-        let info = ffmpeg::probe(input).await.map_err(|e| e.to_string())?;
-        let out = std::env::temp_dir().join(format!(
-            "connectors-{}-{}x{}-{}.mp4",
-            target.platform.id(),
-            format.width,
-            format.height,
-            uuid::Uuid::new_v4().simple()
-        ));
-        let out = out.to_string_lossy().to_string();
-        let plan = ffmpeg::plan_for(&info, &out, format, target.strategy);
-        let label = format!("{:?}", plan.strategy).to_lowercase();
-        ffmpeg::run(&plan, info.duration_s, |f| {
-            r.emit(Stage::Processing, f * PROCESS_WEIGHT, format!("Encoding ({label}) {:.0}%", f * 100.0), None)
-        })
-        .await
-        .map_err(|e| e.to_string())?;
-        Ok(out)
-    } else {
-        for i in 1..=10 {
-            tokio::time::sleep(Duration::from_millis(120)).await;
-            r.emit(Stage::Processing, i as f64 / 10.0 * PROCESS_WEIGHT, format!("Encoding {}%", i * 10), None);
-        }
-        Ok(input.to_string())
+/// Adapts the source with FFmpeg. Fails with a readable message when the
+/// file is gone, FFmpeg is unusable, or the clip can't fit the size limit.
+async fn process(
+    r: &Reporter,
+    input: &str,
+    format: FormatTarget,
+    target: PlatformTarget,
+    quality: ExportQuality,
+) -> Result<String, String> {
+    if !Path::new(input).exists() {
+        return Err("The video file was moved or deleted. Add it again and retry.".into());
     }
+    let engine = ffmpeg::info().await;
+    if let Some(problem) = engine.problem {
+        return Err(problem);
+    }
+    let info = ffmpeg::probe(input).await.map_err(|e| e.to_string())?;
+    let out = std::env::temp_dir().join(format!(
+        "connectors-{}-{}x{}-{}.mp4",
+        target.platform.id(),
+        format.width,
+        format.height,
+        uuid::Uuid::new_v4().simple()
+    ));
+    let out = out.to_string_lossy().to_string();
+    let plan = ffmpeg::plan_for(&info, &out, format, target.strategy, quality);
+    if !plan.fits {
+        return Err(format!(
+            "Too long for {}: staying under its {} MB limit would need very low quality. Trim the video and try again.",
+            target.platform.id(),
+            format.max_bytes / 1_000_000
+        ));
+    }
+    let label = format!("{:?}", plan.strategy).to_lowercase();
+    ffmpeg::run(&plan, info.duration_s, |f| {
+        r.emit(Stage::Processing, f * PROCESS_WEIGHT, format!("Encoding ({label}) {:.0}%", f * 100.0), None)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(out)
 }

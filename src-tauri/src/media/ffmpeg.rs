@@ -1,4 +1,4 @@
-use super::plan::{self, FitStrategy, FormatPlan};
+use super::plan::{self, ExportQuality, FitStrategy, FormatPlan};
 use crate::{
     error::{AppError, AppResult},
     platform::FormatTarget,
@@ -22,30 +22,123 @@ pub struct VideoInfo {
     pub size_bytes: u64,
 }
 
-/// FFMPEG_PATH env > binary bundled next to the app > PATH.
-fn binary(name: &str) -> PathBuf {
+/// Where a binary was found, in resolution order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BinarySource {
+    /// `FFMPEG_PATH` / `FFPROBE_PATH` override.
+    Env,
+    /// Sidecar shipped next to the app executable (Tauri `externalBin`).
+    Bundled,
+    /// Whatever `ffmpeg` resolves to on PATH.
+    Path,
+}
+
+/// FFMPEG_PATH env > sidecar bundled next to the app > PATH.
+fn locate(name: &str) -> (PathBuf, BinarySource) {
     let env_key = format!("{}_PATH", name.to_uppercase());
-    if let Ok(p) = std::env::var(&env_key) {
-        return PathBuf::from(p);
+    if let Some(p) = std::env::var_os(&env_key).filter(|v| !v.is_empty()) {
+        return (PathBuf::from(p), BinarySource::Env);
     }
     if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(PathBuf::from)) {
         let bundled = dir.join(if cfg!(windows) { format!("{name}.exe") } else { name.to_string() });
         if bundled.exists() {
-            return bundled;
+            return (bundled, BinarySource::Bundled);
         }
     }
-    PathBuf::from(name)
+    (PathBuf::from(name), BinarySource::Path)
 }
 
-pub async fn available() -> bool {
-    Command::new(binary("ffmpeg"))
-        .arg("-version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .await
-        .map(|s| s.success())
-        .unwrap_or(false)
+fn binary(name: &str) -> PathBuf {
+    locate(name).0
+}
+
+fn command(name: &str) -> Command {
+    let mut cmd = Command::new(binary(name));
+    // No console window flashing up for every probe/encode on Windows.
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    cmd
+}
+
+/// Result of the Settings "video engine" check.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FfmpegInfo {
+    pub source: BinarySource,
+    pub path: String,
+    pub version: Option<String>,
+    pub ffprobe_found: bool,
+    /// Required encoders this build lacks (see `plan::VIDEO_ENCODER`).
+    pub missing_encoders: Vec<String>,
+    /// Everything needed to publish is present.
+    pub ready: bool,
+    /// Human-readable reason when not ready.
+    pub problem: Option<String>,
+}
+
+/// Parses the encoder names out of `ffmpeg -encoders` output.
+fn encoder_names(listing: &str) -> Vec<&str> {
+    listing
+        .lines()
+        .filter_map(|l| {
+            let mut parts = l.split_whitespace();
+            let flags = parts.next()?;
+            // Rows look like " V....D libopenh264  OpenH264 ..."; skip the legend.
+            (flags.len() == 6 && flags.chars().all(|c| "VAS.FXBD".contains(c))).then_some(())?;
+            parts.next().filter(|name| *name != "=")
+        })
+        .collect()
+}
+
+pub async fn info() -> FfmpegInfo {
+    let (path, source) = locate("ffmpeg");
+    let mut info = FfmpegInfo {
+        source,
+        path: path.to_string_lossy().into_owned(),
+        version: None,
+        ffprobe_found: false,
+        missing_encoders: vec![],
+        ready: false,
+        problem: None,
+    };
+    let version = command("ffmpeg").args(["-hide_banner", "-version"]).output().await;
+    let Ok(version) = version.as_ref().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()) else {
+        info.problem = Some(match source {
+            BinarySource::Env => "FFmpeg not found at FFMPEG_PATH. Fix the path or remove the variable.".into(),
+            _ => "FFmpeg not found. Reinstall Connectors, or install FFmpeg and add it to PATH.".into(),
+        });
+        return info;
+    };
+    info.version = version
+        .lines()
+        .next()
+        .and_then(|l| l.strip_prefix("ffmpeg version "))
+        .map(|v| v.split_whitespace().next().unwrap_or(v).to_string());
+
+    info.ffprobe_found = command("ffprobe").arg("-version").output().await.is_ok_and(|o| o.status.success());
+
+    let listing = command("ffmpeg").args(["-hide_banner", "-encoders"]).output().await;
+    let listing = listing.map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+    let names = encoder_names(&listing);
+    info.missing_encoders = [plan::VIDEO_ENCODER, plan::AUDIO_ENCODER]
+        .into_iter()
+        .filter(|e| !names.contains(e))
+        .map(String::from)
+        .collect();
+
+    info.problem = if !info.ffprobe_found {
+        Some("ffprobe not found next to FFmpeg. Reinstall Connectors or set FFPROBE_PATH.".into())
+    } else if !info.missing_encoders.is_empty() {
+        Some(format!(
+            "This FFmpeg build has no {} encoder. Use the FFmpeg bundled with Connectors (remove FFMPEG_PATH) or a build that includes it.",
+            info.missing_encoders.join(" or ")
+        ))
+    } else {
+        None
+    };
+    info.ready = info.problem.is_none();
+    info
 }
 
 #[derive(Deserialize)]
@@ -74,7 +167,7 @@ struct ProbeFormat {
 }
 
 pub async fn probe(path: &str) -> AppResult<VideoInfo> {
-    let out = Command::new(binary("ffprobe"))
+    let out = command("ffprobe")
         .args(["-v", "error", "-print_format", "json", "-show_streams", "-show_format", path])
         .output()
         .await
@@ -120,8 +213,21 @@ pub async fn probe(path: &str) -> AppResult<VideoInfo> {
     })
 }
 
-pub fn plan_for(info: &VideoInfo, output: &str, target: FormatTarget, strategy: FitStrategy) -> FormatPlan {
-    plan::build(&info.path, output, info.width, info.height, info.duration_s, target, strategy)
+pub fn plan_for(
+    info: &VideoInfo,
+    output: &str,
+    target: FormatTarget,
+    strategy: FitStrategy,
+    quality: ExportQuality,
+) -> FormatPlan {
+    let source = plan::Source {
+        path: &info.path,
+        width: info.width,
+        height: info.height,
+        duration_s: info.duration_s,
+        size_bytes: info.size_bytes,
+    };
+    plan::build(&source, output, target, strategy, quality)
 }
 
 /// Runs an FFmpeg plan, reporting progress in [0, 1] from `-progress pipe:1`.
@@ -129,7 +235,7 @@ pub async fn run<F>(plan: &FormatPlan, total_s: f64, mut on_progress: F) -> AppR
 where
     F: FnMut(f64),
 {
-    let mut child = Command::new(binary("ffmpeg"))
+    let mut child = command("ffmpeg")
         .args(&plan.args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -165,12 +271,21 @@ mod tests {
     use crate::platform::{FormatTarget, Platform};
 
     /// End-to-end: render a landscape test clip, adapt it to a vertical Short
-    /// with a blurred fill and check the output. Skips when FFmpeg is absent
-    /// (CI installs it, so it always runs there).
+    /// with a blurred fill and check the output. Skips when no suitable FFmpeg
+    /// is installed; CI fetches the bundled build so it always runs there.
+    #[test]
+    fn parses_encoder_listing() {
+        let listing = "Encoders:\n V..... = Video\n A..... = Audio\n ------\n V....D libopenh264          OpenH264 H.264\n A....D aac                  AAC (Advanced Audio Coding)\n";
+        assert_eq!(encoder_names(listing), vec!["libopenh264", "aac"]);
+    }
+
     #[tokio::test]
     async fn landscape_clip_becomes_vertical_blur_pad() {
-        if !available().await {
-            eprintln!("skipping: ffmpeg not found");
+        let engine = info().await;
+        if !engine.ready {
+            // CI sets this so a broken FFmpeg setup fails instead of skipping.
+            assert!(std::env::var_os("CONNECTORS_REQUIRE_FFMPEG").is_none(), "{:?}", engine.problem);
+            eprintln!("skipping: {}", engine.problem.unwrap_or_default());
             return;
         }
         let dir = std::env::temp_dir().join(format!("connectors-test-{}", uuid::Uuid::new_v4().simple()));
@@ -178,7 +293,7 @@ mod tests {
         let src = dir.join("in.mp4").to_string_lossy().to_string();
         let out = dir.join("out.mp4").to_string_lossy().to_string();
 
-        let status = Command::new(binary("ffmpeg"))
+        let status = command("ffmpeg")
             .args(["-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30:duration=2"])
             .args(["-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-shortest"])
             .args(["-pix_fmt", "yuv420p", &src])
@@ -189,7 +304,7 @@ mod tests {
 
         let info = probe(&src).await.unwrap();
         assert_eq!((info.width, info.height), (1920, 1080));
-        let plan = plan_for(&info, &out, FormatTarget::for_platform(Platform::Youtube, true), FitStrategy::Auto);
+        let plan = plan_for(&info, &out, FormatTarget::for_platform(Platform::Youtube, true), FitStrategy::Auto, ExportQuality::Medium);
         assert_eq!(plan.strategy, plan::ResolvedStrategy::BlurPad);
 
         let mut last = 0.0;

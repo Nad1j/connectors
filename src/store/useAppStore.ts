@@ -2,6 +2,8 @@ import { create } from "zustand";
 import type {
   Account,
   AiSuggestion,
+  ExportQuality,
+  FfmpegInfo,
   FitStrategy,
   PlatformId,
   ProgressEvent,
@@ -44,9 +46,26 @@ interface AppState {
   applyProgress: (e: ProgressEvent) => void;
   dismissJob: (id: string) => void;
 
+  /** Desktop FFmpeg check; null until checked, and always null in the browser. */
+  engine: FfmpegInfo | null;
+  setEngine: (e: FfmpegInfo | null) => void;
+  exportQuality: ExportQuality;
+  setExportQuality: (q: ExportQuality) => void;
+
   schedule: ScheduledPost[];
   addScheduled: (p: ScheduledPost) => void;
   moveScheduled: (id: string, at: string) => void;
+}
+
+const QUALITY_KEY = "connectors.exportQuality";
+
+function loadQuality(): ExportQuality {
+  try {
+    const v = localStorage.getItem(QUALITY_KEY);
+    return v === "low" || v === "high" ? v : "medium";
+  } catch {
+    return "medium";
+  }
 }
 
 const emptyDraft = (): Draft => ({
@@ -107,6 +126,18 @@ export const useAppStore = create<AppState>((set) => ({
       ),
     })),
   dismissJob: (id) => set((s) => ({ jobs: s.jobs.filter((j) => j.id !== id) })),
+
+  engine: null,
+  setEngine: (engine) => set({ engine }),
+  exportQuality: loadQuality(),
+  setExportQuality: (exportQuality) => {
+    try {
+      localStorage.setItem(QUALITY_KEY, exportQuality);
+    } catch {
+      /* not persisted; the choice still applies for this session */
+    }
+    set({ exportQuality });
+  },
 
   schedule: SEED_SCHEDULE,
   addScheduled: (p) => set((s) => ({ schedule: [...s.schedule, p] })),

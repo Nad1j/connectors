@@ -1,17 +1,36 @@
-import { CheckCircle2, KeyRound, XCircle } from "lucide-react";
+import { CheckCircle2, KeyRound, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { GlassPanel, PanelHeader } from "@/components/ui/GlassPanel";
 import { inTauri, invoke } from "@/lib/tauri";
 import appIcon from "@/assets/app-icon.svg";
+import { useAppStore } from "@/store/useAppStore";
+import { checkEngine } from "@/services/media/videoService";
+import { cn } from "@/lib/utils";
+import type { ExportQuality } from "@/types";
+
+const QUALITIES: { id: ExportQuality; label: string; hint: string }[] = [
+  { id: "low", label: "Low", hint: "Smallest files, fastest uploads" },
+  { id: "medium", label: "Medium", hint: "8 Mb/s at 1080p, 5 Mb/s at 720p" },
+  { id: "high", label: "High", hint: "1.5× bitrate for detailed footage" },
+];
+
+const SOURCE_LABEL = { bundled: "Bundled with Connectors", env: "From FFMPEG_PATH", path: "From system PATH" } as const;
 
 export function Settings() {
-  const [ffmpeg, setFfmpeg] = useState<boolean | null>(null);
+  const { engine, setEngine, exportQuality, setExportQuality } = useAppStore();
+  const [checking, setChecking] = useState(false);
   const [key, setKey] = useState("");
   const [saved, setSaved] = useState(false);
 
+  async function recheck() {
+    setChecking(true);
+    setEngine(await checkEngine());
+    setChecking(false);
+  }
+
   useEffect(() => {
-    if (inTauri) invoke<boolean>("media_ffmpeg_available").then(setFfmpeg);
+    recheck();
   }, []);
 
   async function saveKey() {
@@ -46,19 +65,73 @@ export function Settings() {
       </GlassPanel>
 
       <GlassPanel className="pb-5">
-        <PanelHeader title="Video engine" hint="FFmpeg adapts each upload to the platform's frame and length limits." />
-        <div className="mt-4 flex items-center gap-2 px-5 text-sm">
-          {ffmpeg === null ? (
+        <PanelHeader
+          title="Video engine"
+          hint="FFmpeg adapts each upload to the platform's frame, length and file size limits."
+          right={
+            inTauri && (
+              <Button size="sm" onClick={recheck} disabled={checking}>
+                <RefreshCw size={13} className={cn(checking && "animate-spin")} /> Check again
+              </Button>
+            )
+          }
+        />
+        <div className="mt-4 space-y-2 px-5 text-sm">
+          {!inTauri ? (
             <span className="text-ink-mute">Status is checked in the desktop app.</span>
-          ) : ffmpeg ? (
-            <>
-              <CheckCircle2 size={16} className="text-aurora" /> FFmpeg found
-            </>
+          ) : !engine ? (
+            <span className="text-ink-mute">Checking…</span>
           ) : (
             <>
-              <XCircle size={16} className="text-flare" /> FFmpeg not found. Install it or set FFMPEG_PATH, then restart.
+              <div className="flex items-center gap-2">
+                {engine.ready ? (
+                  <CheckCircle2 size={16} className="text-aurora" />
+                ) : (
+                  <XCircle size={16} className="text-flare" />
+                )}
+                <span>{engine.ready ? "Ready: H.264 (OpenH264) and AAC available" : "Not ready. Publishing is disabled."}</span>
+              </div>
+              {engine.problem && (
+                <p role="alert" className="rounded-xl border border-flare/30 bg-flare/10 px-3.5 py-2.5 text-xs text-flare">
+                  {engine.problem}
+                </p>
+              )}
+              <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1 text-xs">
+                <dt className="text-ink-mute">Source</dt>
+                <dd>{SOURCE_LABEL[engine.source]}</dd>
+                <dt className="text-ink-mute">Version</dt>
+                <dd className="num">{engine.version ?? "unknown"}</dd>
+                <dt className="text-ink-mute">Path</dt>
+                <dd className="truncate font-mono text-[11px] text-ink-soft" title={engine.path}>
+                  {engine.path}
+                </dd>
+              </dl>
             </>
           )}
+        </div>
+      </GlassPanel>
+
+      <GlassPanel className="pb-5">
+        <PanelHeader
+          title="Export quality"
+          hint="Bitrate for re-encoded videos. Long videos are lowered automatically to stay under each platform's size limit."
+        />
+        <div role="radiogroup" aria-label="Export quality" className="mt-4 grid grid-cols-3 gap-2 px-5">
+          {QUALITIES.map((q) => (
+            <button
+              key={q.id}
+              role="radio"
+              aria-checked={exportQuality === q.id}
+              onClick={() => setExportQuality(q.id)}
+              className={cn(
+                "rounded-xl border px-3.5 py-2.5 text-left transition-colors",
+                exportQuality === q.id ? "border-ion/50 bg-ion/10" : "border-line hover:border-ion/30",
+              )}
+            >
+              <span className="block text-sm">{q.label}</span>
+              <span className="mt-0.5 block text-[11px] text-ink-mute">{q.hint}</span>
+            </button>
+          ))}
         </div>
       </GlassPanel>
 

@@ -10,3 +10,6 @@ src-tauri/gen
 *.log
 *.tsbuildinfo
 src-tauri/target-container
+
+# FFmpeg sidecars fetched by scripts/fetch-ffmpeg.*
+src-tauri/binaries/

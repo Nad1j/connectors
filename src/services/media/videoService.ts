@@ -1,5 +1,5 @@
 import { inTauri, invoke } from "@/lib/tauri";
-import type { FitStrategy, PlatformId, VideoAsset } from "@/types";
+import type { ExportQuality, FfmpegInfo, FitStrategy, PlatformId, VideoAsset } from "@/types";
 
 interface ProbeResult {
   width: number;
@@ -36,12 +36,27 @@ export interface FormatPlan {
   strategy: "passthrough" | "scale" | "crop" | "blur-pad" | "letterbox";
   crop: [number, number, number, number] | null;
   trimToS: number | null;
+  videoKbps: number | null;
+  estimatedBytes: number;
+  fits: boolean;
   args: string[];
 }
 
-export async function planFor(path: string, platform: PlatformId, shortForm: boolean, strategy: FitStrategy) {
+export async function planFor(
+  path: string,
+  platform: PlatformId,
+  shortForm: boolean,
+  strategy: FitStrategy,
+  quality: ExportQuality,
+) {
   if (!inTauri) return null;
-  return invoke<FormatPlan>("media_plan", { path, platform, shortForm, strategy });
+  return invoke<FormatPlan>("media_plan", { path, platform, shortForm, strategy, quality });
+}
+
+/** Desktop: which FFmpeg is used and whether it can encode. Browser: null (no engine). */
+export async function checkEngine(): Promise<FfmpegInfo | null> {
+  if (!inTauri) return null;
+  return invoke<FfmpegInfo>("media_ffmpeg_info");
 }
 
 /** Mirrors `media::plan::resolve` in Rust so previews match the encoder. */

@@ -19,7 +19,7 @@ Built with **Tauri 2** (Rust) and **React 18 + TypeScript + Tailwind + Framer Mo
 
 ## Run it
 
-Prerequisites: Node 20+, Rust (stable), [Tauri's system dependencies](https://v2.tauri.app/start/prerequisites/), FFmpeg on `PATH` (or set `FFMPEG_PATH` / `FFPROBE_PATH`).
+Prerequisites: Node 20+, Rust (stable), [Tauri's system dependencies](https://v2.tauri.app/start/prerequisites/). For FFmpeg, run `scripts/fetch-ffmpeg.sh` (or `scripts/fetch-ffmpeg.ps1` on Windows) once, or put an FFmpeg with `libopenh264` and `aac` on `PATH`.
 
 ```bash
 npm install
@@ -31,6 +31,16 @@ npm run dev                                 # UI only, in a browser, with mocked
 Rust tests: `cargo test --manifest-path src-tauri/Cargo.toml`
 
 No webkit2gtk-4.1 on your Linux host (e.g. Enterprise Linux 9)? `scripts/dev-container.sh` runs `cargo clippy` and `cargo test` in an Ubuntu 24.04 container with rootless podman or docker. CI (`.github/workflows/ci.yml`) runs the same checks on Ubuntu and Windows.
+
+## FFmpeg and licensing
+
+Connectors ships `ffmpeg` and `ffprobe` as [Tauri sidecars](https://v2.tauri.app/develop/sidecar/). They are not committed to git: `scripts/fetch-ffmpeg.sh [target-triple]` (Linux/macOS) and `scripts/fetch-ffmpeg.ps1` (Windows, used by CI) download the **LGPL** build from [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds), verify its SHA-256 and save it as `src-tauri/binaries/{ffmpeg,ffprobe}-<target-triple>[.exe]`. Installers are built with `tauri build --config src-tauri/tauri.bundle.conf.json`, which adds the sidecars, so plain `cargo` builds and `tauri dev` work without them.
+
+The app looks for FFmpeg in this order: `FFMPEG_PATH` / `FFPROBE_PATH` → the bundled sidecar → `PATH`. Settings → Video engine shows which one is in use, its version, and whether the two encoders the app needs, `libopenh264` (H.264) and `aac`, are present. If either is missing, publishing is disabled with an explanation.
+
+Re-encodes use OpenH264 in bitrate mode. Medium quality follows YouTube's SDR recommendations: 8 Mb/s at 1080p, 5 Mb/s at 720p. Low is ×0.6 and High is ×1.5. For long clips the bitrate is lowered so the file stays under the platform's size limit (see `src-tauri/src/platform.rs`). If that would take it below a quarter of the base bitrate, the job fails with a "trim the video" message.
+
+**License notice.** The bundled FFmpeg is licensed under the LGPL v3 or later. It contains no GPL-only or non-free parts and includes OpenH264 (BSD 2-Clause, © Cisco Systems). Connectors runs it as a separate program and does not link to it. The notice and full license texts are in [`src-tauri/resources/licenses/`](src-tauri/resources/licenses/) and are installed with the app. FFmpeg source: <https://github.com/FFmpeg/FFmpeg> (release 8.1). Build scripts: <https://github.com/BtbN/FFmpeg-Builds>.
 
 ## Layout
 

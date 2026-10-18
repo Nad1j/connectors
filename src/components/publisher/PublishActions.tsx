@@ -9,14 +9,16 @@ import { recommendSlots } from "@/services/publish/bestTimes";
 import { cn } from "@/lib/utils";
 
 export function PublishActions() {
-  const { draft, accounts, addScheduled, resetDraft } = useAppStore();
+  const { draft, accounts, addScheduled, resetDraft, engine, exportQuality } = useAppStore();
   const [open, setOpen] = useState(false);
 
   const blocked = draft.platforms.filter((p) => {
     const a = accounts.find((x) => x.platform === p);
     return !a?.connected || a.needsReauth;
   });
-  const reason = !draft.video
+  const reason = engine && !engine.ready
+    ? "Video engine isn't ready. See Settings → Video engine."
+    : !draft.video
     ? "Add a video to publish"
     : draft.platforms.length === 0
       ? "Pick at least one platform"
@@ -34,6 +36,7 @@ export function PublishActions() {
       caption: draft.caption,
       hashtags: draft.hashtags,
       scheduleAt,
+      quality: exportQuality,
     });
     if (scheduleAt) {
       addScheduled({ id: crypto.randomUUID(), title: draft.title || draft.video?.name || "Untitled", platforms: draft.platforms, at: scheduleAt });

@@ -1,7 +1,10 @@
 pub mod queue;
 pub mod uploader;
 
-use crate::{media::plan::FitStrategy, platform::Platform};
+use crate::{
+    media::plan::{ExportQuality, FitStrategy},
+    platform::Platform,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -22,6 +25,8 @@ pub struct PublishRequest {
     pub hashtags: Vec<String>,
     /// RFC 3339; `None` publishes now.
     pub schedule_at: Option<String>,
+    #[serde(default)]
+    pub quality: ExportQuality,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

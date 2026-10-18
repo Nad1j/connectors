@@ -1,0 +1,32 @@
+Connectors – third-party software notice
+=========================================
+
+FFmpeg
+------
+Connectors ships unmodified copies of the FFmpeg command-line programs
+"ffmpeg" and "ffprobe" (FFmpeg 8.1 release series). Connectors runs them as
+separate programs; it does not link against FFmpeg libraries.
+
+These binaries are the "lgpl" builds published by the BtbN/FFmpeg-Builds
+project and are licensed under the GNU Lesser General Public License,
+version 3 or later (LGPL-3.0-or-later). They contain no GPL-only or
+non-free components. The full license texts are included next to this file
+(LGPL-3.0.txt, which incorporates GPL-3.0.txt).
+
+  FFmpeg source code:  https://github.com/FFmpeg/FFmpeg  (tag n8.1 and
+                       the release-8.1 branch)
+  FFmpeg website:      https://ffmpeg.org
+  Build scripts used:  https://github.com/BtbN/FFmpeg-Builds
+
+You may replace the bundled programs with your own build: put ffmpeg(.exe)
+and ffprobe(.exe) in the Connectors install folder, or point the
+FFMPEG_PATH / FFPROBE_PATH environment variables at them.
+
+FFmpeg is a trademark of Fabrice Bellard, originator of the FFmpeg project.
+
+OpenH264
+--------
+The FFmpeg build includes OpenH264, used for H.264 encoding.
+Copyright (c) 2013, Cisco Systems. All rights reserved.
+Licensed under the BSD 2-Clause license; see OpenH264-BSD-2-Clause.txt.
+Source: https://github.com/cisco/openh264

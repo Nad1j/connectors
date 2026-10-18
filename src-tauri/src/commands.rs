@@ -2,7 +2,7 @@ use crate::{
     ai::{self, AiRequest, AiSuggestion},
     auth::{oauth, providers, token_store::TokenStore, ConnectionStatus},
     error::{AppError, AppResult},
-    media::{ffmpeg, plan::{FitStrategy, FormatPlan}},
+    media::{ffmpeg, plan::{ExportQuality, FitStrategy, FormatPlan}},
     platform::{FormatTarget, Platform},
     publish::{queue::PublishQueue, PublishRequest},
 };
@@ -79,15 +79,16 @@ pub async fn media_plan(
     platform: Platform,
     short_form: bool,
     strategy: FitStrategy,
+    quality: Option<ExportQuality>,
 ) -> AppResult<FormatPlan> {
     let info = ffmpeg::probe(&path).await?;
     let target = FormatTarget::for_platform(platform, short_form);
-    Ok(ffmpeg::plan_for(&info, "<output>.mp4", target, strategy))
+    Ok(ffmpeg::plan_for(&info, "<output>.mp4", target, strategy, quality.unwrap_or_default()))
 }
 
 #[tauri::command]
-pub async fn media_ffmpeg_available() -> bool {
-    ffmpeg::available().await
+pub async fn media_ffmpeg_info() -> ffmpeg::FfmpegInfo {
+    ffmpeg::info().await
 }
 
 // ---- Publishing ------------------------------------------------------------

@@ -6,6 +6,7 @@ import { IntroSplash } from "@/components/brand/IntroSplash";
 import { useAppStore } from "@/store/useAppStore";
 import { wireProgressEvents } from "@/services/publish/pipeline";
 import * as oauth from "@/services/auth/oauthService";
+import { checkEngine } from "@/services/media/videoService";
 import { Dashboard } from "@/views/Dashboard";
 import { Publisher } from "@/views/Publisher";
 import { Calendar } from "@/views/Calendar";
@@ -31,6 +32,7 @@ export default function App() {
 
   useEffect(() => {
     wireProgressEvents();
+    checkEngine().then((e) => useAppStore.getState().setEngine(e));
     // Desktop: overlay real keychain state onto the account list.
     oauth.status().then((statuses) => {
       if (!statuses) return;

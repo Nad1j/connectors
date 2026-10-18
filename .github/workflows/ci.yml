@@ -14,10 +14,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-24.04
+            triple: x86_64-unknown-linux-gnu
+            exe: ""
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+            exe: .exe
     runs-on: ${{ matrix.os }}
     env:
       CARGO_TERM_COLOR: always
+      # The FFmpeg end-to-end test fails instead of skipping when this is set.
+      CONNECTORS_REQUIRE_FFMPEG: "1"
     steps:
       - uses: actions/checkout@v7
 
@@ -27,11 +35,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
-            libxdo-dev libssl-dev patchelf ffmpeg
+            libxdo-dev libssl-dev patchelf
 
-      - name: Install FFmpeg (Windows)
+      # Tests run against the same LGPL build the installer bundles.
+      - name: Fetch bundled FFmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: scripts/fetch-ffmpeg.sh ${{ matrix.triple }}
+
+      - name: Fetch bundled FFmpeg (Windows)
         if: runner.os == 'Windows'
-        run: choco install ffmpeg -y --no-progress
+        shell: pwsh
+        run: scripts/fetch-ffmpeg.ps1 -Triple ${{ matrix.triple }}
+
+      - name: Point tests at the fetched FFmpeg
+        shell: bash
+        run: |
+          echo "FFMPEG_PATH=$GITHUB_WORKSPACE/src-tauri/binaries/ffmpeg-${{ matrix.triple }}${{ matrix.exe }}" >> "$GITHUB_ENV"
+          echo "FFPROBE_PATH=$GITHUB_WORKSPACE/src-tauri/binaries/ffprobe-${{ matrix.triple }}${{ matrix.exe }}" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v7
         with:

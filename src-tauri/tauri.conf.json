@@ -42,6 +42,9 @@
         "headerImage": "icons/installer/header.bmp",
         "sidebarImage": "icons/installer/sidebar.bmp"
       }
+    },
+    "resources": {
+      "resources/licenses/*": "licenses/"
     }
   }
 }

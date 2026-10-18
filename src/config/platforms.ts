@@ -56,7 +56,7 @@ export const PLATFORMS: Record<PlatformId, PlatformSpec> = {
     id: "x",
     name: "X",
     color: "#D7DBE6",
-    short: { w: 1280, h: 720, label: "16:9", maxS: 140 },
+    short: { w: 1280, h: 720, label: "16:9", maxS: 1200 },
     captionLimit: 280,
     peakHours: [8, 12, 17],
     peakDays: [1, 2, 3],
