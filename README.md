@@ -1,3 +1,5 @@
+<p align="center"><img src="branding/logo-horizontal.svg" alt="Connectors: one video, every platform" width="560"></p>
+
 # Connectors
 
 A desktop command center for video creators: upload one video, adapt it for YouTube, TikTok, Instagram, Facebook and X, write the copy with AI, publish or schedule, then follow analytics and comments in one place.

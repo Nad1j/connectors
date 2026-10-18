@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { AccountsBar } from "@/components/layout/AccountsBar";
+import { IntroSplash } from "@/components/brand/IntroSplash";
 import { useAppStore } from "@/store/useAppStore";
 import { wireProgressEvents } from "@/services/publish/pipeline";
 import * as oauth from "@/services/auth/oauthService";
@@ -67,6 +68,7 @@ export default function App() {
           </AnimatePresence>
         </main>
       </div>
+      <IntroSplash />
     </div>
   );
 }

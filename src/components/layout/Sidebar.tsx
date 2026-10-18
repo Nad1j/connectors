@@ -3,6 +3,7 @@ import { BarChart3, CalendarDays, Inbox, LayoutDashboard, Link2, Send, Settings 
 import { useAppStore } from "@/store/useAppStore";
 import { cn } from "@/lib/utils";
 import type { ViewId } from "@/types";
+import appIcon from "@/assets/app-icon.svg";
 
 const NAV: { id: ViewId; label: string; icon: typeof Send; badge?: number }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -23,8 +24,10 @@ export function Sidebar() {
   return (
     <aside className="flex w-[232px] shrink-0 flex-col border-r border-line bg-base/70 px-3 py-5 backdrop-blur-xl">
       <div className="flex items-center gap-2.5 px-3 pb-7">
-        <Logo />
-        <span className="text-[17px] font-semibold tracking-tight">Connectors</span>
+        <img src={appIcon} width={30} height={30} alt="" className="-my-1" />
+        <span className="text-[17px] font-semibold tracking-tight">
+          Connect<span className="bg-gradient-to-r from-brand-blue to-brand-green bg-clip-text text-transparent">ors</span>
+        </span>
       </div>
 
       <nav className="flex flex-col gap-0.5" aria-label="Main">
@@ -71,30 +74,5 @@ export function Sidebar() {
         <p className="num mt-1.5 text-[11px] text-ink-mute">7.6 / 20 GB</p>
       </div>
     </aside>
-  );
-}
-
-function Logo() {
-  return (
-    <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden>
-      <defs>
-        <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#6C8CFF" />
-          <stop offset="1" stopColor="#3EE6C4" />
-        </linearGradient>
-      </defs>
-      <circle cx="16" cy="16" r="4.5" fill="url(#lg)" />
-      {[0, 72, 144, 216, 288].map((deg) => {
-        const r = (deg * Math.PI) / 180;
-        const x = 16 + Math.cos(r) * 11.5;
-        const y = 16 + Math.sin(r) * 11.5;
-        return (
-          <g key={deg}>
-            <line x1="16" y1="16" x2={x} y2={y} stroke="url(#lg)" strokeWidth="1.6" opacity=".6" />
-            <circle cx={x} cy={y} r="2.6" fill="#0A1020" stroke="url(#lg)" strokeWidth="1.6" />
-          </g>
-        );
-      })}
-    </svg>
   );
 }

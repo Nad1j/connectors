@@ -18,6 +18,8 @@ export default {
         aurora: "#3EE6C4",
         flare: "#FF6B8B",
         amber: "#FFC163",
+        // Logo colors (branding/app-icon.svg). Use for the mark and brand accents.
+        brand: { blue: "#38BDF8", green: "#34D399", bg: "#0B1020" },
       },
       boxShadow: {
         glow: "0 0 0 1px rgba(108,140,255,.35), 0 0 24px -4px rgba(108,140,255,.45)",

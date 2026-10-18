@@ -1,12 +1,14 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
+import pkg from "./package.json" with { type: "json" };
 
 const host = process.env.TAURI_DEV_HOST;
 
 // https://v2.tauri.app/start/frontend/vite/
 export default defineConfig({
   plugins: [react()],
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
   clearScreen: false,
   server: {

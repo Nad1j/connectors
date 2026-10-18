@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { GlassPanel, PanelHeader } from "@/components/ui/GlassPanel";
 import { inTauri, invoke } from "@/lib/tauri";
+import appIcon from "@/assets/app-icon.svg";
 
 export function Settings() {
   const [ffmpeg, setFfmpeg] = useState<boolean | null>(null);
@@ -58,6 +59,17 @@ export function Settings() {
               <XCircle size={16} className="text-flare" /> FFmpeg not found. Install it or set FFMPEG_PATH, then restart.
             </>
           )}
+        </div>
+      </GlassPanel>
+
+      <GlassPanel className="flex items-center gap-5 p-5">
+        <img src={appIcon} width={72} height={72} alt="" />
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">
+            Connect<span className="bg-gradient-to-r from-brand-blue to-brand-green bg-clip-text text-transparent">ors</span>
+          </h2>
+          <p className="text-xs uppercase tracking-[0.2em] text-ink-mute">One video · every platform</p>
+          <p className="num mt-2 text-sm text-ink-soft">Version {__APP_VERSION__}</p>
         </div>
       </GlassPanel>
     </div>
