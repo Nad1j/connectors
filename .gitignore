@@ -13,3 +13,8 @@ src-tauri/target-container
 
 # FFmpeg sidecars fetched by scripts/fetch-ffmpeg.*
 src-tauri/binaries/
+
+# Platform key files for Settings → Import keys (contain client secrets)
+connectors-keys*.json
+*.keys.json
+client_secret*.json

@@ -2,8 +2,8 @@ use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("{0} is not configured: set {1} in .env")]
-    NotConfigured(&'static str, &'static str),
+    #[error("{0} isn't set up yet: add its client ID and secret in Settings → Platform keys")]
+    NotConfigured(&'static str),
     #[error("OAuth error: {0}")]
     OAuth(String),
     #[error("Keychain error: {0}")]

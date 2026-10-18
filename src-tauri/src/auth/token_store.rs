@@ -39,6 +39,13 @@ impl TokenStore {
         Ok(())
     }
 
+    pub fn delete_secret(name: &str) -> AppResult<()> {
+        match Entry::new(SERVICE, &format!("secret:{name}"))?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
     pub fn load_secret(name: &str) -> Option<String> {
         Entry::new(SERVICE, &format!("secret:{name}"))
             .ok()?

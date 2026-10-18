@@ -73,9 +73,10 @@ pub async fn authorize<F>(cfg: &ProviderConfig, open_browser: F) -> AppResult<To
 where
     F: FnOnce(&str) -> AppResult<()>,
 {
-    let client_id = cfg
-        .client_id()
-        .ok_or(AppError::NotConfigured(cfg.platform.id(), cfg.client_id_env))?;
+    if !cfg.is_configured() {
+        return Err(AppError::NotConfigured(cfg.platform.name()));
+    }
+    let client_id = cfg.client_id().ok_or(AppError::NotConfigured(cfg.platform.name()))?;
 
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();
@@ -157,7 +158,7 @@ async fn exchange_code(
 pub async fn refresh(cfg: &ProviderConfig, current: &TokenSet) -> AppResult<TokenSet> {
     let client_id = cfg
         .client_id()
-        .ok_or(AppError::NotConfigured(cfg.platform.id(), cfg.client_id_env))?;
+        .ok_or(AppError::NotConfigured(cfg.platform.name()))?;
     let refresh_token = current
         .refresh_token
         .clone()

@@ -54,7 +54,7 @@ pub fn auth_status() -> Vec<ConnectionStatus> {
                 platform: p,
                 connected: tokens.is_some(),
                 expired: tokens.as_ref().map(|t| t.is_expired()).unwrap_or(false),
-                configured: providers::for_platform(p).and_then(|c| c.client_id()).is_some(),
+                configured: providers::for_platform(p).is_some_and(|c| c.is_configured()),
                 account_id: tokens.and_then(|t| t.account_id),
             }
         })
@@ -64,6 +64,54 @@ pub fn auth_status() -> Vec<ConnectionStatus> {
 #[tauri::command]
 pub fn settings_save_secret(name: String, value: String) -> AppResult<()> {
     TokenStore::save_secret(&name, &value)
+}
+
+/// What Settings shows per platform: where each credential comes from.
+/// Values are never sent to the webview.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformKeysStatus {
+    platform: Platform,
+    client_id_source: Option<providers::KeySource>,
+    client_secret_source: Option<providers::KeySource>,
+}
+
+#[tauri::command]
+pub fn settings_platform_keys() -> Vec<PlatformKeysStatus> {
+    ALL.iter()
+        .filter_map(|&p| providers::for_platform(p))
+        .map(|c| PlatformKeysStatus {
+            platform: c.platform,
+            client_id_source: c.client_id_with_source().map(|(_, s)| s),
+            client_secret_source: c.client_secret_with_source().map(|(_, s)| s),
+        })
+        .collect()
+}
+
+/// Stores a platform's OAuth client ID and/or secret in the keychain. Empty
+/// or missing values leave the stored one untouched.
+#[tauri::command]
+pub fn settings_save_platform_keys(
+    platform: Platform,
+    client_id: Option<String>,
+    client_secret: Option<String>,
+) -> AppResult<()> {
+    let cfg = providers::for_platform(platform)
+        .ok_or_else(|| AppError::Other(format!("{} sign-in isn't available yet", platform.name())))?;
+    for (slot, value) in [(cfg.client_id_slot(), client_id), (cfg.client_secret_slot(), client_secret)] {
+        if let Some(v) = value.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()) {
+            TokenStore::save_secret(&slot, &v)?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn settings_clear_platform_keys(platform: Platform) -> AppResult<()> {
+    let cfg = providers::for_platform(platform)
+        .ok_or_else(|| AppError::Other(format!("{} sign-in isn't available yet", platform.name())))?;
+    TokenStore::delete_secret(&cfg.client_id_slot())?;
+    TokenStore::delete_secret(&cfg.client_secret_slot())
 }
 
 // ---- Media -----------------------------------------------------------------

@@ -66,6 +66,9 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Versions agree (package.json, Cargo.toml, tauri.conf.json)
+        run: node scripts/check-version.mjs
+
       - run: npm ci
       # Also produces dist/, which tauri::generate_context! needs at compile time.
       - run: npm run build

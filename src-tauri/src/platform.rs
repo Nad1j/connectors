@@ -20,6 +20,16 @@ impl Platform {
             Platform::X => "x",
         }
     }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Platform::Youtube => "YouTube",
+            Platform::Tiktok => "TikTok",
+            Platform::Instagram => "Instagram",
+            Platform::Facebook => "Facebook",
+            Platform::X => "X",
+        }
+    }
 }
 
 /// Output format a platform expects for a given post type.

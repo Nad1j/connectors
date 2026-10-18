@@ -1,8 +1,13 @@
-use super::pkce::ChallengeEncoding;
+use super::{pkce::ChallengeEncoding, token_store::TokenStore};
 use crate::platform::Platform;
+use serde::Serialize;
 
-/// Static description of a platform's OAuth endpoints. Client credentials are
-/// read from the environment at runtime so nothing secret is compiled in.
+/// Static description of a platform's OAuth endpoints.
+///
+/// Client credentials resolve in this order: environment variable (dev
+/// `.env`), then the keychain (Settings → Platform keys), then — for the
+/// client ID only — a value embedded at build time from CI secrets. Client
+/// secrets are never compiled in.
 pub struct ProviderConfig {
     pub platform: Platform,
     pub auth_url: &'static str,
@@ -12,7 +17,9 @@ pub struct ProviderConfig {
     /// Query/body key for the client identifier ("client_id" vs TikTok's "client_key").
     pub client_id_param: &'static str,
     pub client_id_env: &'static str,
-    pub client_secret_env: Option<&'static str>,
+    pub client_secret_env: &'static str,
+    /// Client ID embedded at build time (`option_env!`), if CI provided one.
+    pub client_id_builtin: Option<&'static str>,
     pub challenge: ChallengeEncoding,
     pub extra_auth_params: &'static [(&'static str, &'static str)],
 }
@@ -31,7 +38,8 @@ pub const YOUTUBE: ProviderConfig = ProviderConfig {
     client_id_env: "YOUTUBE_CLIENT_ID",
     // Google "Desktop app" clients issue a secret that is not confidential;
     // it is still required by the token endpoint.
-    client_secret_env: Some("YOUTUBE_CLIENT_SECRET"),
+    client_secret_env: "YOUTUBE_CLIENT_SECRET",
+    client_id_builtin: option_env!("YOUTUBE_CLIENT_ID"),
     challenge: ChallengeEncoding::Base64Url,
     // offline + consent guarantees a refresh_token on every connect.
     extra_auth_params: &[("access_type", "offline"), ("prompt", "consent")],
@@ -45,7 +53,8 @@ pub const TIKTOK: ProviderConfig = ProviderConfig {
     scope_separator: ",",
     client_id_param: "client_key",
     client_id_env: "TIKTOK_CLIENT_KEY",
-    client_secret_env: Some("TIKTOK_CLIENT_SECRET"),
+    client_secret_env: "TIKTOK_CLIENT_SECRET",
+    client_id_builtin: option_env!("TIKTOK_CLIENT_KEY"),
     challenge: ChallengeEncoding::Hex,
     extra_auth_params: &[],
 };
@@ -59,14 +68,52 @@ pub fn for_platform(p: Platform) -> Option<&'static ProviderConfig> {
     }
 }
 
+/// Where a credential came from; shown in Settings (values never are).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum KeySource {
+    Env,
+    Settings,
+    Builtin,
+}
+
+fn non_empty(v: Option<String>) -> Option<String> {
+    v.map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+}
+
 impl ProviderConfig {
+    /// Keychain slot names used by Settings and the key import.
+    pub fn client_id_slot(&self) -> String {
+        format!("{}_client_id", self.platform.id())
+    }
+
+    pub fn client_secret_slot(&self) -> String {
+        format!("{}_client_secret", self.platform.id())
+    }
+
+    pub fn client_id_with_source(&self) -> Option<(String, KeySource)> {
+        non_empty(std::env::var(self.client_id_env).ok())
+            .map(|v| (v, KeySource::Env))
+            .or_else(|| non_empty(TokenStore::load_secret(&self.client_id_slot())).map(|v| (v, KeySource::Settings)))
+            .or_else(|| non_empty(self.client_id_builtin.map(String::from)).map(|v| (v, KeySource::Builtin)))
+    }
+
+    pub fn client_secret_with_source(&self) -> Option<(String, KeySource)> {
+        non_empty(std::env::var(self.client_secret_env).ok())
+            .map(|v| (v, KeySource::Env))
+            .or_else(|| non_empty(TokenStore::load_secret(&self.client_secret_slot())).map(|v| (v, KeySource::Settings)))
+    }
+
     pub fn client_id(&self) -> Option<String> {
-        std::env::var(self.client_id_env).ok().filter(|v| !v.is_empty())
+        self.client_id_with_source().map(|(v, _)| v)
     }
 
     pub fn client_secret(&self) -> Option<String> {
-        self.client_secret_env
-            .and_then(|k| std::env::var(k).ok())
-            .filter(|v| !v.is_empty())
+        self.client_secret_with_source().map(|(v, _)| v)
+    }
+
+    /// Both values the token endpoint needs are available.
+    pub fn is_configured(&self) -> bool {
+        self.client_id().is_some() && self.client_secret().is_some()
     }
 }

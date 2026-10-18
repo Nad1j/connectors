@@ -2,6 +2,7 @@ import { CheckCircle2, KeyRound, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { GlassPanel, PanelHeader } from "@/components/ui/GlassPanel";
+import { PlatformKeys } from "@/components/settings/PlatformKeys";
 import { inTauri, invoke } from "@/lib/tauri";
 import appIcon from "@/assets/app-icon.svg";
 import { useAppStore } from "@/store/useAppStore";
@@ -63,6 +64,8 @@ export function Settings() {
         </div>
         {saved && <p className="mt-2 px-5 text-xs text-aurora">Saved to keychain.</p>}
       </GlassPanel>
+
+      <PlatformKeys />
 
       <GlassPanel className="pb-5">
         <PanelHeader

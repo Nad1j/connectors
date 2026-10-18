@@ -27,7 +27,18 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "nsis",
+      "app",
+      "dmg",
+      "appimage"
+    ],
+    "publisher": "Nad1j",
+    "copyright": "© 2026 Nad1j",
+    "category": "SocialNetworking",
+    "shortDescription": "Publish one video to YouTube, TikTok, Instagram, Facebook and X",
+    "longDescription": "Connectors adapts one video for every platform, writes the copy with AI, and publishes or schedules it.",
+    "homepage": "https://github.com/Nad1j/connectors",
     "icon": [
       "icons/32x32.png",
       "icons/64x64.png",
@@ -36,15 +47,21 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": {
+      "resources/licenses/*": "licenses/"
+    },
     "windows": {
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "headerImage": "icons/installer/header.bmp",
-        "sidebarImage": "icons/installer/sidebar.bmp"
+        "sidebarImage": "icons/installer/sidebar.bmp",
+        "installMode": "currentUser",
+        "startMenuFolder": "Connectors",
+        "displayLanguageSelector": false
+      },
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
       }
-    },
-    "resources": {
-      "resources/licenses/*": "licenses/"
     }
   }
 }

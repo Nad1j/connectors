@@ -1,0 +1,172 @@
+name: Release
+
+# Builds installers and publishes them on GitHub Releases.
+#   git tag v0.1.0-rc1 && git push --tags   -> pre-release (tag contains "-")
+#   git tag v0.1.0     && git push --tags   -> normal release, becomes "latest"
+# Or run it by hand from the Actions tab (workflow_dispatch).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, e.g. v0.1.0-rc2 (created on the selected branch if it doesn't exist). Ignored for dry runs."
+        required: false
+      dry_run:
+        description: "Dry run: build the installers as workflow artifacts, don't create a release"
+        type: boolean
+        default: false
+      build_macos:
+        description: "Also build macOS (.dmg)"
+        type: boolean
+        default: false
+      build_linux:
+        description: "Also build Linux (.AppImage)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  # Optional platforms for tag pushes. Windows is always built.
+  BUILD_MACOS: "false"
+  BUILD_LINUX: "false"
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+      release_id: ${{ steps.release.outputs.id }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve tag
+        id: tag
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then TAG="v$(jq -r .version package.json)-dryrun"; fi
+          if [[ "$TAG" != v* ]]; then echo "::error::Enter a tag like v0.1.0-rc2"; exit 1; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [[ "$TAG" == *-* ]]; then echo "prerelease=true"; else echo "prerelease=false"; fi >> "$GITHUB_OUTPUT"
+
+      - name: Check tag matches app version
+        run: node scripts/check-version.mjs "${{ steps.tag.outputs.tag }}"
+
+      - name: Build matrix
+        id: matrix
+        env:
+          MACOS: ${{ github.event.inputs.build_macos || env.BUILD_MACOS }}
+          LINUX: ${{ github.event.inputs.build_linux || env.BUILD_LINUX }}
+        run: |
+          # The sidecar config adds the bundled FFmpeg. macOS has no LGPL build
+          # with OpenH264 to fetch, so it uses an FFmpeg on PATH instead.
+          SIDECAR="--config src-tauri/tauri.bundle.conf.json"
+          m='[{"os":"windows-latest","triple":"x86_64-pc-windows-msvc","args":"'"$SIDECAR"'"}]'
+          if [ "$LINUX" = "true" ]; then
+            m=$(jq -c --arg a "$SIDECAR" '. + [{"os":"ubuntu-22.04","triple":"x86_64-unknown-linux-gnu","args":$a}]' <<<"$m")
+          fi
+          if [ "$MACOS" = "true" ]; then
+            m=$(jq -c '. + [{"os":"macos-latest","triple":"aarch64-apple-darwin","args":""}]' <<<"$m")
+          fi
+          echo "matrix={\"include\":$m}" >> "$GITHUB_OUTPUT"
+
+      # Draft first so "latest" never points at a release without installers;
+      # the publish job flips it once every build has uploaded.
+      - name: Create draft release
+        id: release
+        if: github.event.inputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -n1)
+          if [ -z "$id" ]; then
+            flags=(--draft --generate-notes --title "Connectors $TAG" --target "$GITHUB_SHA")
+            [ "$PRERELEASE" = "true" ] && flags+=(--prerelease)
+            gh release create "$TAG" "${flags[@]}"
+            id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -n1)
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Tauri system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libxdo-dev libssl-dev patchelf
+
+      - name: Fetch FFmpeg sidecar (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: scripts/fetch-ffmpeg.ps1 -Triple ${{ matrix.triple }}
+
+      - name: Fetch FFmpeg sidecar (Linux)
+        if: runner.os == 'Linux'
+        run: scripts/fetch-ffmpeg.sh ${{ matrix.triple }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: release-${{ matrix.triple }}
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@action-v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # OAuth client IDs embedded at build time (never secrets). Optional:
+          # when unset, users enter them in Settings → Platform keys.
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          # Code signing (not set up yet). When it is, add for example:
+          #   Windows: bundle.windows.signCommand in tauri.conf.json plus the
+          #            certificate secrets it needs (e.g. AZURE_* for Trusted Signing)
+          #   macOS:   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
+          #            APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID
+        with:
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          args: ${{ matrix.args }}
+          uploadWorkflowArtifacts: ${{ github.event.inputs.dry_run == 'true' }}
+
+  publish:
+    needs: [prepare, build]
+    if: github.event.inputs.dry_run != 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          # Pre-releases never become "latest", so the Download link keeps
+          # pointing at the last stable version.
+          if [ "$PRERELEASE" = "true" ]; then latest=false; else latest=true; fi
+          gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=false --prerelease="$PRERELEASE" --latest="$latest"
