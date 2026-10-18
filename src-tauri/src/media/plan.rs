@@ -179,11 +179,15 @@ pub fn build(src: &Source, output: &str, target: FormatTarget, strategy: FitStra
             ]);
         }
         ResolvedStrategy::BlurPad => {
+            let (bw, bh) = (tw / 4 / 2 * 2, th / 4 / 2 * 2);
             args.extend([
                 "-filter_complex".into(),
                 format!(
+                    // LGPL-only filters (boxblur/eq are GPL): blur a quarter-size
+                    // copy, scale it back up and darken it slightly.
                     "[0:v]split=2[bg][fg];\
-                     [bg]scale={tw}:{th}:force_original_aspect_ratio=increase,crop={tw}:{th},boxblur=24:4,eq=brightness=-0.08[bgb];\
+                     [bg]scale={bw}:{bh}:force_original_aspect_ratio=increase,crop={bw}:{bh},gblur=sigma=12,\
+                     scale={tw}:{th},lutyuv=y=val*0.9[bgb];\
                      [fg]scale={tw}:{th}:force_original_aspect_ratio=decrease[fgs];\
                      [bgb][fgs]overlay=(W-w)/2:(H-h)/2,setsar=1[v]"
                 ),
@@ -304,7 +308,7 @@ mod tests {
     #[test]
     fn four_hour_facebook_video_does_not_fit() {
         let t = FormatTarget::for_platform(Platform::Facebook, false);
-        let plan = build(&src(1920, 1080, 14_400.0, 1), "out.mp4", t, FitStrategy::Auto, ExportQuality::Medium);
+        let plan = build(&src(3840, 2160, 14_400.0, 1), "out.mp4", t, FitStrategy::Auto, ExportQuality::Medium);
         assert!(!plan.fits);
     }
 

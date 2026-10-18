@@ -53,6 +53,7 @@ fn binary(name: &str) -> PathBuf {
     locate(name).0
 }
 
+#[cfg_attr(not(windows), allow(unused_mut))]
 fn command(name: &str) -> Command {
     let mut cmd = Command::new(binary(name));
     // No console window flashing up for every probe/encode on Windows.

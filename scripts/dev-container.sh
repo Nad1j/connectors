@@ -28,6 +28,15 @@ if [ "$#" -eq 0 ]; then
   set -- bash -c "cargo clippy --all-targets -- -D warnings && cargo test"
 fi
 
+# Use the LGPL FFmpeg from scripts/fetch-ffmpeg.sh when present, so the
+# end-to-end test runs against what the installer bundles.
+FFMPEG_ENV=()
+TRIPLE="$(uname -m)-unknown-linux-gnu"
+if [ -x "$ROOT/src-tauri/binaries/ffmpeg-$TRIPLE" ]; then
+  FFMPEG_ENV=(-e "FFMPEG_PATH=/work/src-tauri/binaries/ffmpeg-$TRIPLE"
+              -e "FFPROBE_PATH=/work/src-tauri/binaries/ffprobe-$TRIPLE")
+fi
+
 # Named volumes keep the registry and target dir warm between runs; the
 # container target dir is separate from the host's to avoid mixing toolchains.
 exec "$ENGINE" run --rm \
@@ -35,5 +44,6 @@ exec "$ENGINE" run --rm \
   -v connectors-cargo-registry:/usr/local/cargo/registry \
   -v connectors-target:/work/src-tauri/target-container \
   -e CARGO_TARGET_DIR=/work/src-tauri/target-container \
+  "${FFMPEG_ENV[@]}" \
   -w /work/src-tauri \
   "$IMAGE" "$@"
